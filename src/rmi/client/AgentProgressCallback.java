@@ -28,14 +28,14 @@ public class AgentProgressCallback extends UnicastRemoteObject implements AgentC
     @Override
     public void updateProgress(String agentId, int progress) throws RemoteException {
         if (this.agentId.equals(agentId)) {
-            gui.appendLog("PROGRESS", agentName + ": " + progress + "%");
+            gui.appendLog(serverName, "PROGRESS", agentName + ": " + progress + "%");
         }
     }
 
     @Override
     public void notifyResult(String agentId, Object result) throws RemoteException {
         if (this.agentId.equals(agentId)) {
-            gui.appendLog("RESULT", agentName + " = " + result);
+            gui.appendLog(serverName, "RESULT", agentName + " = " + result);
             gui.updateAgentCompletion(serverName, agentId);
         }
     }

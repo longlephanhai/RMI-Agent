@@ -1,252 +1,118 @@
 package rmi.client;
 
+import rmi.client.components.*;
+import rmi.common.AgentInfo;
+
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
-import rmi.common.AgentInfo;
+import java.util.stream.Collectors;
 
 public class ClientGUI extends JFrame {
-    private JTable serverTable;
-    private JTable agentTable;
-    private JTable logTable;
-    private DefaultTableModel serverTableModel;
-    private DefaultTableModel agentTableModel;
-    private DefaultTableModel logTableModel;
-    private JComboBox<String> algoCombo;
-    private JTextField inputField;
-    private JButton submitBtn;
-    private JButton refreshBtn;
-    private JButton clearLogsBtn;
-    private Map<String, Integer> serverTasks = new HashMap<>();
-    private Map<String, Map<String, AgentInfo>> serverAgents = new HashMap<>();
+
+    private final ServerPanel serverPanel;
+    private final AgentPanel agentPanel;
+    private final LogPanel logPanel;
+    private final ScriptIDEPanel scriptIDE;
+
+    // Lưu log theo server
+    private final Map<String, Map<String, AgentInfo>> allServerAgents = new HashMap<>();
+    private final Map<String, List<String[]>> serverLogs = new HashMap<>();
+    private String currentServer = null;
 
     public ClientGUI() {
-        setTitle("RMI Agent Client - Real-time Dashboard");
-        setSize(1000, 700);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setTitle("RMI Agent Client");
+        setSize(1200, 800);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        // Top panel: input
-        JPanel topPanel = new JPanel();
-        algoCombo = new JComboBox<>(new String[]{"Fibonacci", "Factorial"});
-        inputField = new JTextField(5);
-        submitBtn = new JButton("Submit Agent");
-        refreshBtn = new JButton("Refresh");
-        clearLogsBtn = new JButton("Clear Logs");
+        serverPanel = new ServerPanel();
+        agentPanel = new AgentPanel();
+        logPanel = new LogPanel();
+        scriptIDE = new ScriptIDEPanel();
 
-        topPanel.add(new JLabel("Algorithm:"));
-        topPanel.add(algoCombo);
-        topPanel.add(new JLabel("Input:"));
-        topPanel.add(inputField);
-        topPanel.add(submitBtn);
-        topPanel.add(refreshBtn);
-        topPanel.add(clearLogsBtn);
-        add(topPanel, BorderLayout.NORTH);
+        // Left: server + agent
+        JSplitPane leftSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, serverPanel, agentPanel);
+        leftSplit.setDividerLocation(250);
 
-        // Center: split pane for agent table and logs
-        JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        // Right: log + mini IDE
+        JSplitPane rightSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, logPanel, scriptIDE);
+        rightSplit.setDividerLocation(400);
 
-        // Agent table (top)
-        String[] agentColumns = {"Agent ID", "Type", "Client", "Progress", "Status", "Server"};
-        agentTableModel = new DefaultTableModel(agentColumns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        agentTable = new JTable(agentTableModel);
-        JScrollPane agentScroll = new JScrollPane(agentTable);
-        agentScroll.setPreferredSize(new Dimension(0, 300));
+        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftSplit, rightSplit);
+        mainSplit.setDividerLocation(400);
+        add(mainSplit, BorderLayout.CENTER);
 
-        // Log table (bottom) - THAY THẾ TEXTAREA BẰNG TABLE
-        String[] logColumns = {"Time", "Type", "Message"};
-        logTableModel = new DefaultTableModel(logColumns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        logTable = new JTable(logTableModel);
+        // Khi chọn server, hiển thị log server đó
+        serverPanel.setServerSelectionListener(this::selectServer);
 
-        // Đặt chiều rộng cột cho log table
-        logTable.getColumnModel().getColumn(0).setPreferredWidth(80); // Time
-        logTable.getColumnModel().getColumn(1).setPreferredWidth(80); // Type
-        logTable.getColumnModel().getColumn(2).setPreferredWidth(500); // Message
-
-        JScrollPane logScroll = new JScrollPane(logTable);
-        logScroll.setPreferredSize(new Dimension(0, 200));
-
-        mainSplitPane.setTopComponent(agentScroll);
-        mainSplitPane.setBottomComponent(logScroll);
-        mainSplitPane.setDividerLocation(400);
-        add(mainSplitPane, BorderLayout.CENTER);
-
-        // Right: server table
-        String[] serverColumns = {"Server Name", "Running Tasks"};
-        serverTableModel = new DefaultTableModel(serverColumns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        serverTable = new JTable(serverTableModel);
-        JScrollPane tableScroll = new JScrollPane(serverTable);
-        tableScroll.setPreferredSize(new Dimension(200, 0));
-        add(tableScroll, BorderLayout.EAST);
-
-        // Xử lý nút Clear Logs
-        clearLogsBtn.addActionListener(e -> clearLogs());
+        setVisible(true);
     }
 
-    public void appendLog(String text) {
-        appendLog("INFO", text);
+    // Getter cho các panel
+    public LogPanel getLogPanel() {
+        return logPanel;
     }
 
-    public void appendLog(String type, String message) {
-        SwingUtilities.invokeLater(() -> {
-            String time = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
-
-            // Thêm màu sắc cho các loại log khác nhau
-            Color rowColor = Color.WHITE;
-            switch (type.toUpperCase()) {
-                case "SUCCESS":
-                    rowColor = new Color(240, 255, 240); // Xanh nhạt
-                    break;
-                case "ERROR":
-                    rowColor = new Color(255, 240, 240); // Đỏ nhạt
-                    break;
-                case "PROGRESS":
-                    rowColor = new Color(240, 240, 255); // Xanh da trời nhạt
-                    break;
-                case "RESULT":
-                    rowColor = new Color(255, 255, 240); // Vàng nhạt
-                    break;
-            }
-
-            logTableModel.addRow(new Object[]{time, type, message});
-
-            // Cuộn đến dòng mới nhất
-            logTable.scrollRectToVisible(logTable.getCellRect(logTableModel.getRowCount()-1, 0, true));
-
-            // Giới hạn số dòng log (tối đa 1000 dòng)
-            if (logTableModel.getRowCount() > 1000) {
-                logTableModel.removeRow(0);
-            }
-        });
+    public ScriptIDEPanel getScriptIDE() {
+        return scriptIDE;
     }
 
-    private void clearLogs() {
-        SwingUtilities.invokeLater(() -> {
-            logTableModel.setRowCount(0);
-            appendLog("SYSTEM", "Logs cleared");
-        });
+    public ServerPanel getServerPanel() {
+        return serverPanel;
     }
 
-    public void updateServer(String name, int runningTasks) {
-        serverTasks.put(name, runningTasks);
-        updateServerTable();
+    public AgentPanel getAgentPanel() {
+        return agentPanel;
     }
 
+    // Ghi log theo server
+    public void appendLog(String serverName, String type, String message) {
+        serverLogs.putIfAbsent(serverName, new ArrayList<>());
+        serverLogs.get(serverName).add(new String[]{type, message});
+
+        if (serverName.equals(currentServer)) {
+            logPanel.appendLog(type, message);
+        }
+    }
+
+    // Chọn server hiển thị log
+    public void selectServer(String serverName) {
+        currentServer = serverName;
+
+        // Load logs
+        logPanel.clearLogs();
+        List<String[]> logs = serverLogs.getOrDefault(serverName, List.of());
+        for (String[] log : logs) {
+            logPanel.appendLog(log[0], log[1]);
+        }
+
+        // Load agents của server đã chọn
+        agentPanel.updateAgentsForServer(serverName, allServerAgents);
+    }
+
+
+    // Cập nhật trạng thái server
     public void updateServerStatus(String serverName, int runningTasks, List<AgentInfo> activeAgents) {
-        SwingUtilities.invokeLater(() -> {
-            serverTasks.put(serverName, runningTasks);
+        serverPanel.updateServers(Map.of(serverName, runningTasks));
 
-            Map<String, AgentInfo> agentMap = serverAgents.getOrDefault(serverName, new HashMap<>());
+        Map<String, AgentInfo> agents =
+                activeAgents.stream().collect(Collectors.toMap(
+                        AgentInfo::getAgentId,
+                        a -> a
+                ));
 
-            // Cập nhật hoặc thêm mới agent
-            for (AgentInfo agent : activeAgents) {
-                agentMap.put(agent.getAgentId(), agent);
-            }
+        allServerAgents.put(serverName, agents);
 
-            // Xóa agent đã hoàn thành khỏi danh sách hiển thị
-            Iterator<Map.Entry<String, AgentInfo>> iterator = agentMap.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, AgentInfo> entry = iterator.next();
-                boolean stillActive = activeAgents.stream()
-                        .anyMatch(a -> a.getAgentId().equals(entry.getKey()));
-                if (!stillActive && "COMPLETED".equals(entry.getValue().getStatus())) {
-                    iterator.remove();
-                }
-            }
-
-            serverAgents.put(serverName, agentMap);
-            updateServerTable();
-            updateAgentTable();
-        });
+        // Nếu user đang xem đúng server này → update AgentPanel
+        if (serverName.equals(currentServer)) {
+            agentPanel.updateAgentsForServer(serverName, allServerAgents);
+        }
     }
 
-    private void updateServerTable() {
-        SwingUtilities.invokeLater(() -> {
-            serverTableModel.setRowCount(0);
-            for (Map.Entry<String, Integer> entry : serverTasks.entrySet()) {
-                serverTableModel.addRow(new Object[]{entry.getKey(), entry.getValue()});
-            }
-        });
-    }
-
-    private void updateAgentTable() {
-        SwingUtilities.invokeLater(() -> {
-            agentTableModel.setRowCount(0);
-
-            Set<String> addedAgents = new HashSet<>();
-
-            for (Map.Entry<String, Map<String, AgentInfo>> serverEntry : serverAgents.entrySet()) {
-                String serverName = serverEntry.getKey();
-                Map<String, AgentInfo> agentMap = serverEntry.getValue();
-
-                for (AgentInfo agent : agentMap.values()) {
-                    String agentKey = agent.getAgentId() + "-" + serverName;
-
-                    if (!addedAgents.contains(agentKey)) {
-                        agentTableModel.addRow(new Object[]{
-                                agent.getAgentId(),
-                                agent.getAgentType(),
-                                agent.getClientId(),
-                                agent.getProgress() + "%",
-                                agent.getStatus(),
-                                serverName
-                        });
-                        addedAgents.add(agentKey);
-                    }
-                }
-            }
-        });
-    }
 
     public void updateAgentCompletion(String serverName, String agentId) {
-        SwingUtilities.invokeLater(() -> {
-            Map<String, AgentInfo> agentMap = serverAgents.get(serverName);
-            if (agentMap != null) {
-                agentMap.remove(agentId);
-                updateAgentTable();
-            }
-            appendLog("SUCCESS", "Agent " + agentId.substring(0, 8) + "... completed on " + serverName);
-        });
-    }
-
-    public JButton getSubmitBtn() {
-        return submitBtn;
-    }
-
-    public JButton getRefreshBtn() {
-        return refreshBtn;
-    }
-
-    public JButton getClearLogsBtn() {
-        return clearLogsBtn;
-    }
-
-    public JComboBox<String> getAlgoCombo() {
-        return algoCombo;
-    }
-
-    public JTextField getInputField() {
-        return inputField;
-    }
-
-    public int getServerTasks(String serverName) {
-        return serverTasks.getOrDefault(serverName, 0);
+        appendLog(serverName, "INFO", "Agent " + agentId.substring(0, 8) + " completed.");
     }
 }

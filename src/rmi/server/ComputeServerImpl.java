@@ -23,9 +23,6 @@ public class ComputeServerImpl extends UnicastRemoteObject implements ComputeSer
         this.serverName = serverName;
     }
 
-    // Trong method submitAgent của ComputeServerImpl
-    // Trong method submitAgent của ComputeServerImpl
-    // Trong ComputeServerImpl.java
     @Override
     public void submitAgent(Agent agent) throws RemoteException {
         runningTasks.incrementAndGet();

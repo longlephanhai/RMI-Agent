@@ -6,19 +6,19 @@ import rmi.client.agents.tasks.FibonacciTask;
 import rmi.common.Agent;
 import rmi.common.AgentCallback;
 import rmi.common.ComputeServer;
+import rmi.common.AgentInfo;
 
+import javax.swing.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.UUID;
+import java.util.*;
 
 public class Client {
     private static boolean isSubmitting = false;
 
     public static void main(String[] args) {
         try {
-            // Khởi tạo GUI
             ClientGUI gui = new ClientGUI();
-            gui.setVisible(true);
 
             Registry registry = LocateRegistry.getRegistry("localhost", 1099);
             ComputeServer server1 = (ComputeServer) registry.lookup("ComputeServer1");
@@ -28,54 +28,45 @@ public class Client {
             String[] serverNames = {"Server 1", "Server 2", "Server 3"};
             ComputeServer[] servers = {server1, server2, server3};
 
-            // Tạo DUY NHẤT 1 global callback
+            Map<String, Integer> serverTasks = new HashMap<>();
+            Map<String, Map<String, AgentInfo>> serverAgents = new HashMap<>();
+
             AgentCallback globalCallback = new AgentCallbackImpl("Global Monitor", "All Servers", gui);
 
-            // Đăng ký với tất cả servers
             for (ComputeServer server : servers) {
                 server.registerClient(globalCallback);
             }
 
-            gui.appendLog("SUCCESS", "Connected to servers with Client ID: " + globalCallback.getClientId().substring(0, 8) + "...");
+            gui.getLogPanel().appendLog("SUCCESS", "Connected to servers with Client ID: "
+                    + globalCallback.getClientId().substring(0, 8) + "...");
 
-
-            // Cập nhật GUI server ban đầu
             for (String name : serverNames) {
-                gui.updateServer(name, 0);
+                serverTasks.put(name, 0);
             }
+            gui.getServerPanel().updateServers(serverTasks);
 
-            gui.getSubmitBtn().addActionListener(e -> {
+            // Nút submit / run
+            gui.getScriptIDE().getRunButton().addActionListener(e -> {
                 if (isSubmitting) {
-                    gui.appendLog("Đang xử lý request trước đó...");
+                    gui.getLogPanel().appendLog("INFO", "Đang xử lý request trước đó...");
                     return;
                 }
-
                 isSubmitting = true;
-                gui.getSubmitBtn().setEnabled(false);
+                gui.getScriptIDE().getRunButton().setEnabled(false);
 
                 try {
-                    String algo = (String) gui.getAlgoCombo().getSelectedItem();
-                    int n;
-
-                    try {
-                        n = Integer.parseInt(gui.getInputField().getText());
-                        if (n < 0) {
-                            gui.appendLog("ERROR", "Input phải là số nguyên!");
-                            return;
-                        }
-                    } catch (NumberFormatException ex) {
-                        gui.appendLog("ERROR", "Input phải là số nguyên!");
+                    String algo = gui.getScriptIDE().getAlgoCombo().getSelectedItem().toString();
+                    int n = Integer.parseInt(gui.getScriptIDE().getInputField().getText());
+                    if (n < 0) {
+                        gui.getLogPanel().appendLog("ERROR", "Input phải là số nguyên!");
                         return;
                     }
 
-                    String agentName = algo + " " + n;
                     String agentId = UUID.randomUUID().toString();
 
-                    // Tìm server ít task nhất
                     ComputeServer bestServer = servers[0];
                     String bestServerName = serverNames[0];
                     int minTasks = servers[0].getRunningTask();
-
                     for (int i = 0; i < servers.length; i++) {
                         int tasks = servers[i].getRunningTask();
                         if (tasks < minTasks) {
@@ -85,10 +76,8 @@ public class Client {
                         }
                     }
 
-                    // SỬA: Tạo callback chỉ cho progress/result, KHÔNG cho server status
-                    AgentCallback agentCallback = new AgentProgressCallback(agentName, bestServerName, gui, agentId);
+                    AgentCallback agentCallback = new AgentProgressCallback(algo + " " + n, bestServerName, gui, agentId);
 
-                    // Tạo agent theo thuật toán
                     Agent agent;
                     switch (algo) {
                         case "Fibonacci":
@@ -98,45 +87,51 @@ public class Client {
                             agent = new GenericAgent(new FactorialTask(n, agentCallback));
                             break;
                         default:
-                            gui.appendLog("Thuật toán không hợp lệ!");
+                            gui.getLogPanel().appendLog("ERROR", "Thuật toán không hợp lệ!");
                             return;
                     }
 
                     agent.setAgentId(agentId);
-                    agent.setClientId(globalCallback.getClientId()); // Dùng clientId từ global callback
+                    agent.setClientId(globalCallback.getClientId());
                     agent.setCallback(agentCallback);
 
-                    // Gửi agent đến server
                     bestServer.submitAgent(agent);
 
-                    gui.appendLog("SUCCESS", "✓ Submitted " + agentName + " to " + bestServerName);
-                    gui.appendLog("  Agent ID: " + agentId.substring(0, 8) + "...");
+                    gui.getLogPanel().appendLog("SUCCESS", "✓ Submitted " + algo + " " + n + " to " + bestServerName);
+                    gui.getLogPanel().appendLog("INFO", "Agent ID: " + agentId.substring(0, 8) + "...");
 
+                } catch (NumberFormatException ex) {
+                    gui.getLogPanel().appendLog("ERROR", "Input phải là số nguyên!");
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    gui.appendLog("ERROR", "✗ Error: " + ex.getMessage());
-
+                    gui.getLogPanel().appendLog("ERROR", "✗ Error: " + ex.getMessage());
                 } finally {
                     isSubmitting = false;
-                    gui.getSubmitBtn().setEnabled(true);
+                    gui.getScriptIDE().getRunButton().setEnabled(true);
                 }
             });
 
-            // Nút refresh
-            gui.getRefreshBtn().addActionListener(e -> {
+            // Refresh manual
+            gui.getScriptIDE().getRunButton().addActionListener(e -> {
                 try {
                     for (int i = 0; i < servers.length; i++) {
                         int tasks = servers[i].getRunningTask();
-                        java.util.List<rmi.common.AgentInfo> agents = servers[i].getActiveAgents();
-                        gui.updateServerStatus(serverNames[i], tasks, agents);
+                        List<AgentInfo> agents = servers[i].getActiveAgents();
+
+                        serverTasks.put(serverNames[i], tasks);
+
+                        Map<String, AgentInfo> agentMap = new HashMap<>();
+                        for (AgentInfo a : agents) agentMap.put(a.getAgentId(), a);
+                        serverAgents.put(serverNames[i], agentMap);
                     }
-                    gui.appendLog("Manual refresh completed");
+                    gui.getServerPanel().updateServers(serverTasks);
+                    gui.getAgentPanel().updateAgents(serverAgents);
+                    gui.getLogPanel().appendLog("INFO", "Manual refresh completed");
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
             });
 
-            // Đóng kết nối khi đóng cửa sổ
             gui.addWindowListener(new java.awt.event.WindowAdapter() {
                 @Override
                 public void windowClosing(java.awt.event.WindowEvent windowEvent) {
@@ -144,7 +139,7 @@ public class Client {
                         for (ComputeServer server : servers) {
                             server.unregisterClient(globalCallback);
                         }
-                        gui.appendLog("Disconnected from servers");
+                        gui.getLogPanel().appendLog("INFO", "Disconnected from servers");
                     } catch (Exception ex) {
                         ex.printStackTrace();
                     }
@@ -153,8 +148,8 @@ public class Client {
 
         } catch (Exception ex) {
             ex.printStackTrace();
-            javax.swing.JOptionPane.showMessageDialog(null, "Cannot connect to servers: " + ex.getMessage(),
-                    "Connection Error", javax.swing.JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(null, "Cannot connect to servers: " + ex.getMessage(),
+                    "Connection Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }
