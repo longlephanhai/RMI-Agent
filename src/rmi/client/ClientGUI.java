@@ -16,7 +16,7 @@ public class ClientGUI extends JFrame {
     private final LogPanel logPanel;
     private final ScriptIDEPanel scriptIDE;
 
-    // Lưu log theo server
+    // Lưu dữ liệu toàn bộ server
     private final Map<String, Map<String, AgentInfo>> allServerAgents = new HashMap<>();
     private final Map<String, List<String[]>> serverLogs = new HashMap<>();
     private String currentServer = null;
@@ -36,7 +36,7 @@ public class ClientGUI extends JFrame {
         JSplitPane leftSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, serverPanel, agentPanel);
         leftSplit.setDividerLocation(250);
 
-        // Right: log + mini IDE
+        // Right: log + IDE
         JSplitPane rightSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, logPanel, scriptIDE);
         rightSplit.setDividerLocation(400);
 
@@ -44,75 +44,65 @@ public class ClientGUI extends JFrame {
         mainSplit.setDividerLocation(400);
         add(mainSplit, BorderLayout.CENTER);
 
-        // Khi chọn server, hiển thị log server đó
+        // Khi chọn server
         serverPanel.setServerSelectionListener(this::selectServer);
 
         setVisible(true);
     }
 
-    // Getter cho các panel
-    public LogPanel getLogPanel() {
-        return logPanel;
-    }
+    public LogPanel getLogPanel() { return logPanel; }
+    public ScriptIDEPanel getScriptIDE() { return scriptIDE; }
+    public ServerPanel getServerPanel() { return serverPanel; }
+    public AgentPanel getAgentPanel() { return agentPanel; }
 
-    public ScriptIDEPanel getScriptIDE() {
-        return scriptIDE;
-    }
-
-    public ServerPanel getServerPanel() {
-        return serverPanel;
-    }
-
-    public AgentPanel getAgentPanel() {
-        return agentPanel;
-    }
-
-    // Ghi log theo server
+    // Khi có log mới từ server
     public void appendLog(String serverName, String type, String message) {
         serverLogs.putIfAbsent(serverName, new ArrayList<>());
         serverLogs.get(serverName).add(new String[]{type, message});
 
+        // Nếu server hiện tại được chọn, hiển thị ngay
         if (serverName.equals(currentServer)) {
-            logPanel.appendLog(type, message);
+            SwingUtilities.invokeLater(() -> logPanel.appendLog(type, message));
         }
     }
 
-    // Chọn server hiển thị log
+    // Khi click chọn server
     public void selectServer(String serverName) {
         currentServer = serverName;
 
-        // Load logs
+        // Xóa log hiện tại
         logPanel.clearLogs();
+
+        // Hiển thị log của server được chọn
         List<String[]> logs = serverLogs.getOrDefault(serverName, List.of());
         for (String[] log : logs) {
             logPanel.appendLog(log[0], log[1]);
         }
 
-        // Load agents của server đã chọn
+        // Cập nhật agent table cho server
         agentPanel.updateAgentsForServer(serverName, allServerAgents);
     }
 
-
-    // Cập nhật trạng thái server
+    // Cập nhật trạng thái server: số task + danh sách agent
     public void updateServerStatus(String serverName, int runningTasks, List<AgentInfo> activeAgents) {
         serverPanel.updateServers(Map.of(serverName, runningTasks));
 
-        Map<String, AgentInfo> agents =
-                activeAgents.stream().collect(Collectors.toMap(
-                        AgentInfo::getAgentId,
-                        a -> a
-                ));
-
+        Map<String, AgentInfo> agents = activeAgents.stream()
+                .collect(Collectors.toMap(AgentInfo::getAgentId, a -> a));
         allServerAgents.put(serverName, agents);
 
-        // Nếu user đang xem đúng server này → update AgentPanel
         if (serverName.equals(currentServer)) {
             agentPanel.updateAgentsForServer(serverName, allServerAgents);
         }
     }
 
-
+    // Khi agent hoàn thành
     public void updateAgentCompletion(String serverName, String agentId) {
         appendLog(serverName, "INFO", "Agent " + agentId.substring(0, 8) + " completed.");
+
+        // Cập nhật agent table
+        if (serverName.equals(currentServer)) {
+            agentPanel.updateAgentsForServer(serverName, allServerAgents);
+        }
     }
 }
