@@ -90,6 +90,10 @@ public class ScriptIDEPanel extends JPanel {
         codeArea.setSyntaxEditingStyle(style);
     }
 
+    public RSyntaxTextArea getCodeArea() {
+        return codeArea;
+    }
+
     // Xóa và thêm output mới
     public void appendOutput(String text) {
         outputArea.setText(""); // clear trước khi in

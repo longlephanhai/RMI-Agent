@@ -8,6 +8,8 @@ import rmi.common.Agent;
 import rmi.common.AgentCallback;
 import rmi.common.ComputeServer;
 import rmi.common.AgentInfo;
+import rmi.model.CodingProblem;
+import rmi.service.CodingService;
 
 import javax.swing.*;
 import java.rmi.registry.LocateRegistry;
@@ -27,6 +29,14 @@ public class Client {
             ComputeServer server2 = (ComputeServer) registry.lookup("ComputeServer2");
             ComputeServer server3 = (ComputeServer) registry.lookup("ComputeServer3");
 
+            // KẾT NỐI CODING SERVICE
+            CodingService codingService = (CodingService) registry.lookup("CodingService");
+            gui.setCodingService(codingService); // Thêm method này vào ClientGUI
+
+            // LOAD PROBLEMS KHI KHỞI ĐỘNG
+            List<CodingProblem> problems = codingService.getAllProblems();
+            gui.getProblemPanel().loadProblems(problems); // Sẽ tạo panel mới
+
             String[] serverNames = {"Server 1", "Server 2", "Server 3"};
             ComputeServer[] servers = {server1, server2, server3};
 
@@ -41,14 +51,20 @@ public class Client {
 
             // Run Task (Fibonacci / Factorial)
             gui.getScriptIDE().getRunButton().addActionListener(e -> {
-                if (isSubmitting) { gui.getLogPanel().appendLog("INFO","Đang xử lý request..."); return; }
+                if (isSubmitting) {
+                    gui.getLogPanel().appendLog("INFO", "Đang xử lý request...");
+                    return;
+                }
                 isSubmitting = true;
                 gui.getScriptIDE().getRunButton().setEnabled(false);
 
                 try {
                     String algo = gui.getScriptIDE().getAlgoCombo().getSelectedItem().toString();
                     int n = Integer.parseInt(gui.getScriptIDE().getInputField().getText());
-                    if (n < 0) { gui.getLogPanel().appendLog("ERROR","Input phải là số nguyên!"); return; }
+                    if (n < 0) {
+                        gui.getLogPanel().appendLog("ERROR", "Input phải là số nguyên!");
+                        return;
+                    }
 
                     String agentId = UUID.randomUUID().toString();
                     // Chọn server ít task nhất
@@ -57,7 +73,11 @@ public class Client {
                     int minTasks = servers[0].getRunningTask();
                     for (int i = 0; i < servers.length; i++) {
                         int tasks = servers[i].getRunningTask();
-                        if (tasks < minTasks) { minTasks = tasks; bestServer = servers[i]; bestServerName = serverNames[i]; }
+                        if (tasks < minTasks) {
+                            minTasks = tasks;
+                            bestServer = servers[i];
+                            bestServerName = serverNames[i];
+                        }
                     }
 
                     AgentCallback agentCallback = new AgentCallbackImpl("Agent", bestServerName, gui) {
@@ -65,8 +85,10 @@ public class Client {
                         public void notifyResult(String agentId, Object result) {
                             SwingUtilities.invokeLater(() -> gui.getScriptIDE().appendOutput(result.toString()));
                         }
+
                         @Override
-                        public void updateProgress(String agentId, int progress) { }
+                        public void updateProgress(String agentId, int progress) {
+                        }
                     };
 
                     Agent agent;
@@ -78,7 +100,8 @@ public class Client {
                             agent = new GenericAgent(new FactorialTask(n, agentCallback));
                             break;
                         default:
-                            gui.getLogPanel().appendLog("ERROR","Thuật toán không hợp lệ!"); return;
+                            gui.getLogPanel().appendLog("ERROR", "Thuật toán không hợp lệ!");
+                            return;
                     }
 
                     agent.setAgentId(agentId);
@@ -86,14 +109,14 @@ public class Client {
                     agent.setCallback(agentCallback);
                     bestServer.submitAgent(agent);
 
-                    gui.getLogPanel().appendLog("SUCCESS","✓ Submitted " + algo + " " + n + " to " + bestServerName);
-                    gui.getLogPanel().appendLog("INFO","Agent ID: " + agentId.substring(0, 8) + "...");
+                    gui.getLogPanel().appendLog("SUCCESS", "✓ Submitted " + algo + " " + n + " to " + bestServerName);
+                    gui.getLogPanel().appendLog("INFO", "Agent ID: " + agentId.substring(0, 8) + "...");
 
                 } catch (NumberFormatException ex) {
-                    gui.getLogPanel().appendLog("ERROR","Input phải là số nguyên!");
+                    gui.getLogPanel().appendLog("ERROR", "Input phải là số nguyên!");
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    gui.getLogPanel().appendLog("ERROR","✗ Error: " + ex.getMessage());
+                    gui.getLogPanel().appendLog("ERROR", "✗ Error: " + ex.getMessage());
                 } finally {
                     isSubmitting = false;
                     gui.getScriptIDE().getRunButton().setEnabled(true);
@@ -102,7 +125,10 @@ public class Client {
 
             // Submit Code (đa ngôn ngữ)
             gui.getScriptIDE().getSubmitButton().addActionListener(e -> {
-                if (isSubmitting) { gui.getLogPanel().appendLog("INFO","Đang xử lý request..."); return; }
+                if (isSubmitting) {
+                    gui.getLogPanel().appendLog("INFO", "Đang xử lý request...");
+                    return;
+                }
                 isSubmitting = true;
                 gui.getScriptIDE().getSubmitButton().setEnabled(false);
 
@@ -128,7 +154,11 @@ public class Client {
                     int minTasks = servers[0].getRunningTask();
                     for (int i = 0; i < servers.length; i++) {
                         int tasks = servers[i].getRunningTask();
-                        if (tasks < minTasks) { minTasks = tasks; bestServer = servers[i]; bestServerName = serverNames[i]; }
+                        if (tasks < minTasks) {
+                            minTasks = tasks;
+                            bestServer = servers[i];
+                            bestServerName = serverNames[i];
+                        }
                     }
 
                     AgentCallback agentCallback = new AgentCallbackImpl("Agent", bestServerName, gui) {
@@ -136,8 +166,10 @@ public class Client {
                         public void notifyResult(String agentId, Object result) {
                             SwingUtilities.invokeLater(() -> gui.getScriptIDE().appendOutput(result.toString()));
                         }
+
                         @Override
-                        public void updateProgress(String agentId, int progress) { }
+                        public void updateProgress(String agentId, int progress) {
+                        }
                     };
 
                     // Dùng ScriptTask đa ngôn ngữ
@@ -148,12 +180,12 @@ public class Client {
                     agent.setCallback(agentCallback);
                     bestServer.submitAgent(agent);
 
-                    gui.getLogPanel().appendLog("SUCCESS","✓ Submitted code (" + taskLang + ") to " + bestServerName);
-                    gui.getLogPanel().appendLog("INFO","Agent ID: " + agentId.substring(0,8) + "...");
+                    gui.getLogPanel().appendLog("SUCCESS", "✓ Submitted code (" + taskLang + ") to " + bestServerName);
+                    gui.getLogPanel().appendLog("INFO", "Agent ID: " + agentId.substring(0, 8) + "...");
 
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    gui.getLogPanel().appendLog("ERROR","✗ Error: " + ex.getMessage());
+                    gui.getLogPanel().appendLog("ERROR", "✗ Error: " + ex.getMessage());
                 } finally {
                     isSubmitting = false;
                     gui.getScriptIDE().getSubmitButton().setEnabled(true);
@@ -164,10 +196,15 @@ public class Client {
             gui.addWindowListener(new java.awt.event.WindowAdapter() {
                 @Override
                 public void windowClosing(java.awt.event.WindowEvent e) {
-                    try { for (ComputeServer s : servers) s.unregisterClient(globalCallback); }
-                    catch (Exception ex) { ex.printStackTrace(); }
+                    try {
+                        for (ComputeServer s : servers) s.unregisterClient(globalCallback);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
                 }
             });
+
+
 
         } catch (Exception ex) {
             ex.printStackTrace();
